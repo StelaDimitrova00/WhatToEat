@@ -2,7 +2,10 @@
    DATA LAYER — всичко минава през Supabase.
    `state` е кеш в паметта; всяка промяна първо отива в базата.
    ============================================================ */
-const sb = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+/* Новите publishable ключове (sb_publishable_...) заместват старите anon ключове
+   и се подават на същото място. Fallback-ът е за стари конфигурации. */
+const SUPABASE_KEY = window.SUPABASE_PUBLISHABLE_KEY || window.SUPABASE_ANON_KEY;
+const sb = window.supabase.createClient(window.SUPABASE_URL, SUPABASE_KEY);
 
 const state = {
   user: null,            // supabase auth user

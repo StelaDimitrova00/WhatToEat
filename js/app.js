@@ -48,14 +48,14 @@ function isRecoveryUrl(){return /type=recovery/.test(location.hash)||/type=recov
 
 function configMissing(){
   return !window.SUPABASE_URL||window.SUPABASE_URL.includes("YOUR-PROJECT-REF")
-      ||!window.SUPABASE_ANON_KEY||window.SUPABASE_ANON_KEY.includes("YOUR-PUBLIC");
+      ||!SUPABASE_KEY||SUPABASE_KEY.includes("YOUR-PUBLISHABLE-KEY");
 }
 
 async function boot(){
   if(configMissing()){
     document.getElementById("app").innerHTML=
       `<div class="authwrap"><h2 style="margin-top:0">Липсва конфигурация</h2>
-<p class="muted">Попълни <b>SUPABASE_URL</b> и <b>SUPABASE_ANON_KEY</b> в <code>js/config.js</code>.</p></div>`;
+<p class="muted">Попълни <b>SUPABASE_URL</b> и <b>SUPABASE_PUBLISHABLE_KEY</b> в <code>js/config.js</code>.</p></div>`;
     return;
   }
   document.getElementById("app").innerHTML=loadingHtml();

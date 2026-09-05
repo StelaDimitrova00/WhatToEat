@@ -13,7 +13,7 @@
 | Файл | Какво прави |
 |---|---|
 | `index.html` | Обвивка + всички стилове (непроменени) |
-| `js/config.js` | **Твоите Supabase ключове — единственото, което попълваш** |
+| `js/config.js` | **Project URL + publishable key — единственото, което попълваш** |
 | `js/util.js` | Константи, екраниране, toast, модали |
 | `js/db.js` | Supabase клиент + всички заявки към базата + кеш в паметта |
 | `js/auth.js` | Регистрация, вход, изход, забравена парола |
@@ -84,21 +84,29 @@
 
 ## 4. Вземи ключовете
 
-**Project Settings → API** (или **Data API**):
+Supabase смени системата с ключове: старите `anon` / `service_role` (дълги JWT
+низове) вече са отбелязани като **legacy**. Новите се казват **publishable** и
+**secret**. За това приложение ти трябва **publishable**.
 
-- `Project URL` → напр. `https://abcdefgh.supabase.co`
-- `anon` / `public` key → дълъг низ
+**Project Settings → API Keys** (таб **API keys**, не **Legacy API keys**):
+
+- `Project URL` (от **Project Settings → Data API**) → напр. `https://abcdefgh.supabase.co`
+- **Publishable key** → започва с `sb_publishable_...`
 
 Сложи ги в `js/config.js`:
 
 ```js
 window.SUPABASE_URL = "https://abcdefgh.supabase.co";
-window.SUPABASE_ANON_KEY = "eyJhbGciOi...";
+window.SUPABASE_PUBLISHABLE_KEY = "sb_publishable_AbCdEf123...";
 ```
 
-> `anon` ключът е **публичен по дизайн** — вижда се във всеки браузър. Сигурността
-> се пази от RLS политиките в базата, не от скриването на ключа.
-> **Никога** не слагай тук `service_role` ключа.
+> Publishable key-ът е **публичен по дизайн** — вижда се във всеки браузър.
+> Сигурността се пази от RLS политиките в базата, не от скриването на ключа.
+> **Никога** не слагай тук `secret` ключа (`sb_secret_...`) — той заобикаля RLS
+> и дава пълен достъп до базата.
+
+Ако имаш стар проект и още ползваш `anon` ключ, приложението продължава да работи
+— `js/db.js` приема и `window.SUPABASE_ANON_KEY` като резервен вариант.
 
 ## 5. Тествай локално
 
