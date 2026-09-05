@@ -7,22 +7,20 @@ function setCat(c){
   if(!chips.length){render();return}
   chips.forEach(b=>b.classList.toggle("active",b.dataset.c===c));
   const h=document.querySelector("#app .browse .section-head h2");
-  if(h)h.textContent=(c==="Всички")
-    ?(currentView==="public"?"Всички споделени":"Моите рецепти")
-    :c;
-  if(currentView==="public")renderPublicCards();else renderCards();
+  if(h)h.textContent=(c==="Всички")?homeTitle():c;
+  renderCards();
 }
+function homeTitle(){return homeSource==="shared"?"Споделени рецепти":"Моите рецепти"}
 
 /* Страничната лента с категории. `counts` е {категория: брой}. */
 function catSidebar(cats,counts,total,addBtn){
   const item=(c,n)=>`<button class="cat ${activeCat===c?"active":""}" data-c="${escHtml(c)}" onclick="setCat(this.dataset.c)">${escHtml(c)}<span class="cnt">${n}</span></button>`;
-  return `<aside class="sidebar">
-<div class="side-title">Категории</div>
+  return `<div class="side-title">Категории</div>
 <div class="categories catlist">
 ${item("Всички",total)}
 ${cats.map(c=>item(c,counts[c]||0)).join("")}
 ${addBtn?`<button class="cat add" onclick="openAddCategoryModal()">+ Категория</button>`:""}
-</div></aside>`;
+</div>`;
 }
 function catSidebarMine(){
   const counts={};
@@ -76,6 +74,13 @@ ${recipeMeta(r)}
 </div></div></article>`;
 }
 function homeCardsHtml(){
+  if(homeSource==="shared"){
+    const items=publicItems();
+    if(items.length)return `<div class="grid">${items.map(x=>publicCard(x.owner,x.r)).join("")}</div>`;
+    if(me().publicRecipes.length)
+      return emptyState("\u{1F50D}","Няма намерени рецепти","Опитай с друга дума или категория.");
+    return emptyState("\u{1F30D}","Още няма споделени рецепти","Сподели своя рецепта и тя ще се появи тук за всички.");
+  }
   const list=filtered();
   if(list.length)return `<div class="grid">${list.map(card).join("")}</div>`;
   if(me().recipes.length)
@@ -83,26 +88,72 @@ function homeCardsHtml(){
   return emptyState("\u{1F4D2}","Тук още е празно","Добави първата си рецепта и започни да планираш седмицата.",
     `<button class="btn primary" onclick="openRecipeForm()">+ Нова рецепта</button>`);
 }
-function renderHome(app){
-  const shown=filtered().length;
-  app.innerHTML=`<section class="hero">
-<div class="eyebrow">Домашно меню · рецепти · пазаруване</div>
+function homeCount(){
+  return homeSource==="shared"
+    ? `${publicItems().length} от общността`
+    : (()=>{const n=filtered().length;return `${n} ${n===1?"рецепта":"рецепти"}`})();
+}
+function sourceSwitch(){
+  return `<div class="seg">
+<button class="${homeSource==="mine"?"active":""}" onclick="setHomeSource('mine')">Моите</button>
+<button class="${homeSource==="shared"?"active":""}" onclick="setHomeSource('shared')">Споделени</button>
+</div>`;
+}
+function setHomeSource(src){
+  if(homeSource===src)return;
+  homeSource=src;activeCat="Всички";
+  const box=document.getElementById("search");
+  if(box)box.value="";
+  renderHome(document.getElementById("app"));
+}
+
+/* Един и същ hero и при зареждане, и след това — иначе заглавието премигва. */
+function homeHeroHtml(){
+  return homeSource==="shared"
+    ? `<section class="hero"><div class="eyebrow">Общност</div>
+<h1>Рецепти от общността</h1>
+<p>Разгледай публичните рецепти на всички потребители и ги добави към своите.</p></section>`
+    : `<section class="hero"><div class="eyebrow">Домашно меню · рецепти · пазаруване</div>
 <h1>Какво ще готвим днес?</h1>
-<p>Събирай любимите си рецепти, планирай седмицата и превръщай избраното меню в един удобен списък за пазаруване.</p>
-</section>
+<p>Събирай любимите си рецепти, планирай седмицата и превръщай избраното меню в един удобен списък за пазаруване.</p></section>`;
+}
+function homeShellHtml(sidebar){
+  return `${homeHeroHtml()}
 <div class="browse">
-${catSidebarMine()}
+<aside class="sidebar">${sidebar}</aside>
 <div>
-<div class="section-head" style="margin-top:0"><div><h2>${activeCat==="Всички"?"Моите рецепти":escHtml(activeCat)}</h2><div class="sub" id="cardCount">${shown} ${shown===1?"рецепта":"рецепти"}</div></div>
-<button class="btn ghost" onclick="openRecipeForm()">+ Нова рецепта</button></div>
+<div class="section-head" style="margin-top:0"><div><h2>${activeCat==="Всички"?homeTitle():escHtml(activeCat)}</h2><div class="sub" id="cardCount">${homeCount()}</div></div>
+${homeSource==="mine"?`<button class="btn ghost" onclick="openRecipeForm()">+ Нова рецепта</button>`:""}</div>
 <div id="cards">${homeCardsHtml()}</div>
 </div></div>`;
 }
+
+async function renderHome(app){
+  if(homeSource==="shared"){
+    /* показваме рамката веднага, картите — след като дойдат от базата */
+    app.innerHTML=`${homeHeroHtml()}
+<div class="browse"><aside class="sidebar">${sourceSwitch()}</aside><div>${skeletonCards(6)}</div></div>`;
+    try{ await dbLoadPublic(); }
+    catch(e){
+      console.error(e);
+      app.innerHTML=`${homeHeroHtml()}
+<div class="browse"><aside class="sidebar">${sourceSwitch()}</aside><div>${
+        emptyState("\u26A0\uFE0F","Неуспешно зареждане","Провери връзката си и опитай пак.",
+          `<button class="btn ghost" onclick="renderHome(document.getElementById('app'))">Опитай пак</button>`)}</div></div>`;
+      return;
+    }
+    if(currentView!=="home"||homeSource!=="shared")return;
+    app.innerHTML=homeShellHtml(sourceSwitch()+catSidebarPublic());
+    return;
+  }
+  app.innerHTML=homeShellHtml(sourceSwitch()+catSidebarMine());
+}
+
 function renderCards(){
   const e=document.getElementById("cards");
   if(e)e.innerHTML=homeCardsHtml();
   const c=document.getElementById("cardCount");
-  if(c){const n=filtered().length;c.textContent=`${n} ${n===1?"рецепта":"рецепти"}`}
+  if(c)c.textContent=homeCount();
 }
 
 /* ---------- PUBLIC FEED (everyone's shared recipes) ---------- */
@@ -134,39 +185,6 @@ function publicCardsHtml(){
     return emptyState("\u{1F50D}","Няма намерени рецепти","Опитай с друга дума или категория.");
   return emptyState("\u{1F30D}","Още няма споделени рецепти","Сподели своя рецепта и тя ще се появи тук за всички.");
 }
-async function renderPublicFeed(app){
-  app.innerHTML=`<section class="hero">
-<div class="eyebrow">Общност</div>
-<h1>Споделени рецепти</h1>
-<p>Разгледай публичните рецепти на всички потребители и ги добави към своите.</p>
-</section>
-<div id="publicBody">${skeletonCards(6)}</div>`;
-  try{ await dbLoadPublic(); }
-  catch(e){
-    console.error(e);
-    const b=document.getElementById("publicBody");
-    if(b)b.innerHTML=emptyState("\u26A0\uFE0F","Неуспешно зареждане","Провери връзката си и опитай пак.",
-      `<button class="btn ghost" onclick="showPublic()">Опитай пак</button>`);
-    return;
-  }
-  if(currentView!=="public")return;
-  const body=document.getElementById("publicBody");
-  if(!body)return;
-  const shown=publicItems().length;
-  body.innerHTML=`<div class="browse">
-${catSidebarPublic()}
-<div>
-<div class="section-head" style="margin-top:0"><div><h2>${activeCat==="Всички"?"Всички споделени":escHtml(activeCat)}</h2><div class="sub" id="cardCount">${shown} от общността</div></div></div>
-<div id="cards">${publicCardsHtml()}</div>
-</div></div>`;
-}
-function renderPublicCards(){
-  const e=document.getElementById("cards");
-  if(e)e.innerHTML=publicCardsHtml();
-  const c=document.getElementById("cardCount");
-  if(c)c.textContent=`${publicItems().length} от общността`;
-}
-
 function openForeignRecipe(id){
   const item=findPublic(id);
   if(!item)return;
@@ -506,8 +524,8 @@ ${(autoList||customList)
 <div class="panel">
 <div class="panel-head"><div><h2>Категории</h2><div class="sub">Влачи ⠿, за да ги подредиш както искаш</div></div></div>
 <div class="categories" id="catManage">${categoryChipsManage()}</div>
-<div style="display:flex;gap:9px;margin-top:16px;max-width:420px">
-<input id="newCatName" placeholder="Нова категория" style="flex:1;border:1px solid var(--line);border-radius:var(--r-sm);padding:11px 13px;background:var(--surface)" onkeydown="if(event.key==='Enter'){event.preventDefault();addCategory()}">
+<div class="add-row">
+<input id="newCatName" placeholder="Нова категория" onkeydown="if(event.key==='Enter'){event.preventDefault();addCategory()}">
 <button class="btn primary" onclick="addCategory(this)">Добави</button></div>
 </div>
 </div>`;

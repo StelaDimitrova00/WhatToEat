@@ -85,7 +85,7 @@ async function logout(){
 }
 
 function authHeader(title){
-  return `<div class="auth-logo"><span class="mark">\u{1F958}</span><h2>${title}</h2></div>`;
+  return `<div class="auth-logo"><img src="logo.png" alt="${APP_NAME}"><h2>${title}</h2></div>`;
 }
 function renderAuth(){
   const app=document.getElementById("app");

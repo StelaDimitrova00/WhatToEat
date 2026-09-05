@@ -1,14 +1,15 @@
 /* ---------- NAV / ROUTING / BOOT ---------- */
 let currentView="home";
 let activeCat="Всички";
+let homeSource="mine";      // "mine" | "shared" — какво показва „Начало“
 
 const NAV_ITEMS=[
   {view:"home",      label:"Начало",   icon:"\u{1F3E0}", go:"showHome()"},
-  {view:"public",    label:"Рецепти",  icon:"\u{1F4D6}", go:"showPublic()"},
   {view:"friends",   label:"Приятели", icon:"\u{1F465}", go:"showFriends()"},
   {view:"dashboard", label:"Профил",   icon:"\u{1F4C5}", go:"showDashboard()"}
 ];
-const LOGO_HTML=`<div class="logo"><span class="mark">\u{1F958}</span><span class="logo-text">Вкус у дома</span></div>`;
+const APP_NAME="Рецепти за всеки ден";
+const LOGO_HTML=`<button class="logo" onclick="showHome()" title="Начало" aria-label="Начало"><img src="logo.png" alt="${APP_NAME}"></button>`;
 
 /* Хедърът се строи веднъж; после само се обновява кой раздел е активен.
    Така полето за търсене не се пресъздава и не губи фокус, докато пишеш. */
@@ -53,15 +54,15 @@ function searchQuery(){return (document.getElementById("search")?.value||"").tri
 /* Едно поле за търсене обслужва и моите рецепти, и споделените.
    От друг изглед писането те връща в „Моите рецепти“. */
 function onHeaderSearch(){
-  if(currentView==="public"){renderPublicCards();return}
   if(currentView==="home"){renderCards();return}
   if(!searchQuery())return;
-  currentView="home";activeCat="Всички";
+  /* От друг изглед търсенето връща в МОИТЕ рецепти — както и бутонът „Начало“. */
+  currentView="home";homeSource="mine";activeCat="Всички";
   render();
 }
 
-function showHome(){currentView="home";activeCat="Всички";render()}
-function showPublic(){currentView="public";activeCat="Всички";render()}
+function showHome(){currentView="home";homeSource="mine";activeCat="Всички";render()}
+function showShared(){currentView="home";homeSource="shared";activeCat="Всички";render()}
 function showDashboard(){currentView="dashboard";render()}
 function showFriends(){currentView="friends";render()}
 
@@ -71,7 +72,6 @@ function render(){
   if(!signedIn()){renderAuth();return}
   if(currentView==="dashboard"){renderDashboard(app);return}
   if(currentView==="friends"){renderFriends(app);return}
-  if(currentView==="public"){renderPublicFeed(app);return}
   renderHome(app);
 }
 
@@ -101,7 +101,7 @@ function configMissing(){
 async function boot(){
   if(configMissing()){
     document.getElementById("app").innerHTML=
-      `<div class="authwrap"><div class="auth-logo"><span class="mark">\u{1F958}</span><h2>Липсва конфигурация</h2></div>
+      `<div class="authwrap"><div class="auth-logo"><img src="logo.png" alt="${APP_NAME}"><h2>Липсва конфигурация</h2></div>
 <p class="muted" style="text-align:center">Попълни <b>SUPABASE_URL</b> и <b>SUPABASE_PUBLISHABLE_KEY</b> в <code>js/config.js</code>.</p></div>`;
     return;
   }
