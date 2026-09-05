@@ -19,8 +19,8 @@ function catSidebar(cats,counts,total,addBtn){
 <div class="categories catlist">
 ${item("Всички",total)}
 ${cats.map(c=>item(c,counts[c]||0)).join("")}
-${addBtn?`<button class="cat add" onclick="openAddCategoryModal()">+ Категория</button>`:""}
-</div>`;
+</div>
+${addBtn?`<button class="cat add" onclick="openAddCategoryModal()">+ Категория</button>`:""}`;
 }
 function catSidebarMine(){
   const counts={};
@@ -451,6 +451,31 @@ async function toggleShop(key,el){
   try{ await dbSetShopping(key,next); }
   catch(e){ console.error(e); toast("Неуспешен запис"); if(el)el.classList.toggle("done",!next); }
 }
+/* Групира продуктите от седмичното меню по име (не по име+мярка).
+   Връща [{key, p, units:[{u,n}]}] в реда, в който се срещат. */
+function shoppingFromWeek(){
+  const wk=me().week, byName={}, order=[];
+  DAYS.forEach(d=>(wk[d]||[]).forEach(e=>{
+    const r=me().recipes.find(x=>x.id===e.id);
+    if(!r)return;
+    r.ings.forEach(([n,u,p])=>{
+      const name=String(p||"").trim();
+      if(!name)return;
+      const key=name.toLowerCase();
+      let item=byName[key];
+      if(!item){item=byName[key]={key,p:name,units:[]};order.push(item)}
+      let slot=item.units.find(x=>x.u===u);
+      if(!slot){slot={u,n:0};item.units.push(slot)}
+      slot.n+=parseQty(n);
+    });
+  }));
+  return order;
+}
+/* „1 л + 1 ч.ч.“ */
+function amountText(item){
+  return item.units.map(x=>fmtQty(x.n)+(x.u?" "+x.u:"")).join(" + ");
+}
+
 function todayIndex(){return (new Date().getDay()+6)%7}   /* DAYS започва от понеделник */
 
 function renderDashboard(app){
@@ -474,16 +499,13 @@ ${groups}
 <button class="day-add" onclick="pickDay('${escJs(d)}')">+ добави</button></div>`;
   }).join("");
 
-  /* сумиране на продуктите от менюто */
-  const all={};
-  DAYS.forEach(d=>(wk[d]||[]).forEach(e=>{
-    const r=me().recipes.find(x=>x.id===e.id);
-    if(r)r.ings.forEach(([n,u,p])=>{const key=String(p).trim().toLowerCase()+"|"+u;all[key]=all[key]||{p,u,n:0};all[key].n+=parseQty(n)});
-  }));
-  const autoList=Object.values(all).map(x=>{
-    const k=String(x.p).trim().toLowerCase()+"|"+x.u;
-    return `<li class="${me().shopping[k]?"done":""}" data-k="${escHtml(k)}" onclick="toggleShop(this.dataset.k,this)"><span>${escHtml(x.p)}</span><b>${fmtQty(x.n)} ${escHtml(x.u)}</b></li>`;
-  }).join("");
+  /* Сумиране на продуктите от менюто.
+     Един ред на продукт; различните мерни единици се изброяват в него
+     (напр. „мляко — 1 л + 1 ч.ч.“), вместо два отделни реда. */
+  const all=shoppingFromWeek();
+  const autoList=all.map(x=>
+    `<li class="${me().shopping[x.key]?"done":""}" data-k="${escHtml(x.key)}" onclick="toggleShop(this.dataset.k,this)"><span>${escHtml(x.p)}</span><b>${escHtml(amountText(x))}</b></li>`
+  ).join("");
   const customList=me().customItems.map(customItemHtml).join("");
   const hasCustom=me().customItems.length>0;
   const planned=Object.values(wk).flat().length;
