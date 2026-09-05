@@ -1,3 +1,10 @@
+/* Кутията със снимката: истинска снимка, ако има, иначе емоджито. */
+function recipePhotoHtml(r, cls){
+  return r.photo
+    ? `<div class="${cls}"><img src="${escHtml(photoUrl(r.photo))}" alt="${escHtml(r.name)}" loading="lazy"></div>`
+    : `<div class="${cls}">${r.emoji||"🍽️"}</div>`;
+}
+
 /* ---------- WEEKLY MENU ---------- */
 function addToWeek(id){pickDay(null,id)}
 function pickDay(day,id){
@@ -35,7 +42,7 @@ function openRecipe(id){
   if(!r)return;
   const steps=(r.steps||"").split(/\n+/).filter(Boolean);
   openModal(`<div class="modalbox recipe-detail"><button class="close" onclick="closeModal()">×</button>
-<div class="recipe-img">${r.emoji||"🍽️"}</div><span class="tag">${escHtml(r.cat)}${r.public?" · Публична":" · Лична"}${r.fromFriend?" · от @"+escHtml(r.fromFriend):""}</span><h1>${escHtml(r.name)}</h1>
+${recipePhotoHtml(r,"recipe-img")}<span class="tag">${escHtml(r.cat)}${r.public?" · Публична":" · Лична"}${r.fromFriend?" · от @"+escHtml(r.fromFriend):""}</span><h1>${escHtml(r.name)}</h1>
 <p class="muted">${r.time?escHtml(r.time)+" · ":""}${r.servings?escHtml(r.servings)+" порции · ":""}${escHtml(r.cal||"")}</p>
 <div class="actions">
 <button onclick="toggleFav('${escJs(r.id)}',this)">${r.fav?"♥ Премахни от любими":"♡ Добави в любими"}</button>
@@ -71,15 +78,74 @@ async function deleteRecipe(id,btn){
   if(!r)return;
   if(!confirm("Сигурни ли сте, че искате да изтриете „"+r.name+"“?"))return;
   await guard(btn, async ()=>{
+    const photo=r.photo;
     await dbDeleteRecipe(id);
+    await dbDeletePhoto(photo);
     closeModal();toast("Рецептата е изтрита");currentView="home";render();
   });
 }
 
 /* ---------- RECIPE FORM (create + edit) ---------- */
+/* Състояние на избора на снимка във формата.
+   current = какво има записано, file = ново избрано, remove = искаме без снимка. */
+let formPhoto={current:null,file:null,remove:false,previewUrl:null};
+function resetFormPhoto(current){
+  if(formPhoto.previewUrl)URL.revokeObjectURL(formPhoto.previewUrl);
+  formPhoto={current:current||null,file:null,remove:false,previewUrl:null};
+}
+function formPhotoBoxHtml(r){
+  if(formPhoto.previewUrl)
+    return `<img src="${formPhoto.previewUrl}" alt="">`;
+  if(!formPhoto.remove&&formPhoto.current)
+    return `<img src="${escHtml(photoUrl(formPhoto.current))}" alt="">`;
+  return r&&r.emoji?r.emoji:"🍽️";
+}
+function refreshPhotoBox(r){
+  const box=document.getElementById("photoBox");
+  if(box)box.innerHTML=formPhotoBoxHtml(r);
+  const clear=document.getElementById("photoClear");
+  if(clear)clear.style.display=(formPhoto.file||(formPhoto.current&&!formPhoto.remove))?"":"none";
+}
+function onPhotoPick(input){
+  const file=input.files&&input.files[0];
+  if(!file)return;
+  if(!/^image\//.test(file.type)){toast("Файлът не е снимка");input.value="";return}
+  if(file.size>PHOTO_MAX_INPUT_BYTES){toast("Снимката е прекалено голяма");input.value="";return}
+  if(formPhoto.previewUrl)URL.revokeObjectURL(formPhoto.previewUrl);
+  formPhoto.file=file;
+  formPhoto.remove=false;
+  formPhoto.previewUrl=URL.createObjectURL(file);
+  refreshPhotoBox();
+}
+function clearPhotoPick(){
+  if(formPhoto.previewUrl)URL.revokeObjectURL(formPhoto.previewUrl);
+  formPhoto.file=null;
+  formPhoto.previewUrl=null;
+  formPhoto.remove=true;
+  const input=document.getElementById("rphoto");
+  if(input)input.value="";
+  refreshPhotoBox();
+}
+/* Връща пътя, който да запишем в рецептата. Качва/трие според избора. */
+async function resolveFormPhoto(){
+  if(formPhoto.file){
+    toast("Качване на снимката...");
+    const blob=await resizeImage(formPhoto.file);
+    const path=await dbUploadPhoto(blob);
+    await dbDeletePhoto(formPhoto.current);      // старата вече не трябва
+    return path;
+  }
+  if(formPhoto.remove&&formPhoto.current){
+    await dbDeletePhoto(formPhoto.current);
+    return null;
+  }
+  return formPhoto.current;
+}
+
 function ingredientNames(){const set=new Set();me().recipes.forEach(r=>r.ings.forEach(i=>{if(i[2])set.add(i[2])}));return[...set]}
 function openRecipeForm(editId){
   const r=editId?me().recipes.find(x=>x.id===editId):null;
+  resetFormPhoto(r?r.photo:null);
   openModal(`<div class="modalbox"><button class="close" onclick="closeModal()">×</button>
 <h2>${r?"Редактирай рецепта":"Нова рецепта"}</h2>
 <datalist id="ingNames">${ingredientNames().map(n=>`<option value="${escHtml(n)}">`).join("")}</datalist>
@@ -91,6 +157,13 @@ function openRecipeForm(editId){
 <div class="field"><label>Време (по желание)</label><input id="rt" value="${r?escHtml(r.time||""):""}" placeholder="45 мин"></div>
 <div class="field"><label>Порции (по желание)</label><input id="rs" type="number" min="1" value="${r&&r.servings?escHtml(r.servings):""}"></div>
 <div class="field full"><label>Калории (по желание)</label><div style="display:flex;gap:10px"><input id="rk" type="number" min="0" placeholder="250" value="${r&&r.cal?escHtml(r.cal.split(" ")[0]):""}"><select id="rkunit"><option>за 100 г</option><option>за порция</option></select></div></div>
+<div class="field full"><label>Снимка (по желание)</label>
+<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+<div id="photoBox" class="photo" style="width:132px;height:99px;border-radius:14px;font-size:38px;flex:none">${formPhotoBoxHtml(r)}</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<input type="file" id="rphoto" accept="image/*" onchange="onPhotoPick(this)">
+<button type="button" class="ghost" id="photoClear" onclick="clearPhotoPick()" style="display:${(r&&r.photo)?"":"none"}">Махни снимката</button>
+</div></div></div>
 <div class="field full"><label>Продукти *</label><div class="ingredients" id="ings"></div><div style="display:flex;gap:8px;margin-top:4px"><button type="button" class="ghost" onclick="addIng()">+ Добави продукт</button><a class="ghost" style="text-decoration:none;display:inline-flex;align-items:center" href="https://www.supichka.com/%D1%80%D0%B5%D1%86%D0%B5%D0%BF%D1%82%D0%B0/453/%D0%BC%D0%B5%D1%80%D0%BD%D0%B8-%D0%B5%D0%B4%D0%B8%D0%BD%D0%B8%D1%86%D0%B8-%D0%B2-%D0%BA%D1%83%D1%85%D0%BD%D1%8F%D1%82%D0%B0-%D0%BA%D1%83%D1%85%D0%BD%D0%B5%D0%BD%D1%81%D0%BA%D0%B8-%D0%BC%D0%B5%D1%80%D0%BA%D0%B8" target="_blank" rel="noopener">📏 Мерни единици</a></div></div>
 <div class="field full"><label>Начин на приготвяне</label><textarea id="rsteps" placeholder="Напиши стъпките свободно...">${r?escHtml(r.steps):""}</textarea></div>
 </div>
@@ -129,8 +202,10 @@ async function createRecipe(ev){
     const f=readForm();
     if(!f.ings.length){toast("Добави поне един продукт");return}
     if(f.newcat&&!me().categories.includes(f.cat))await dbAddCategory(f.cat);
+    const photo=await resolveFormPhoto();
     await dbInsertRecipe({name:f.name,cat:f.cat,emoji:"🍽️",time:f.time,servings:f.servings,
-      cal:f.cal,public:false,fav:false,ings:f.ings,steps:f.steps});
+      cal:f.cal,public:false,fav:false,photo,ings:f.ings,steps:f.steps});
+    resetFormPhoto(null);
     closeModal();toast("Рецептата е запазена");showHome();
   });
 }
@@ -144,8 +219,10 @@ async function saveEditRecipe(ev,id){
     const f=readForm();
     if(!f.ings.length){toast("Добави поне един продукт");return}
     if(f.newcat&&!me().categories.includes(f.cat))await dbAddCategory(f.cat);
+    const photo=await resolveFormPhoto();
     await dbUpdateRecipe(id,{name:f.name,cat:f.cat,time:f.time,servings:String(f.servings||""),
-      cal:f.cal,ings:f.ings,steps:f.steps});
+      cal:f.cal,photo,ings:f.ings,steps:f.steps});
+    resetFormPhoto(null);
     closeModal();toast("Промените са запазени");openRecipe(id);
   });
 }

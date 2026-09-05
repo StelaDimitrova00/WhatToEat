@@ -28,12 +28,13 @@ create table public.profiles (
 create unique index profiles_username_lower_idx on public.profiles (lower(username));
 
 create table public.categories (
-  id      uuid primary key default gen_random_uuid(),
-  owner   uuid not null references public.profiles(id) on delete cascade,
-  name    text not null check (char_length(trim(name)) between 1 and 40),
+  id       uuid primary key default gen_random_uuid(),
+  owner    uuid not null references public.profiles(id) on delete cascade,
+  name     text not null check (char_length(trim(name)) between 1 and 40),
+  position integer not null default 0,   -- подредбата, която потребителят си е направил
   unique (owner, name)
 );
-create index categories_owner_idx on public.categories(owner);
+create index categories_owner_position_idx on public.categories(owner, position);
 
 create table public.recipes (
   id          uuid primary key default gen_random_uuid(),
@@ -47,6 +48,7 @@ create table public.recipes (
   is_public   boolean not null default false,
   fav         boolean not null default false,
   from_friend text,
+  photo       text,                      -- път във bucket-а recipe-photos (не URL)
   ings        jsonb not null default '[]'::jsonb,
   steps       text not null default '',
   created_at  timestamptz not null default now()
@@ -151,10 +153,10 @@ begin
 
   insert into public.profiles (id, username) values (new.id, uname);
 
-  insert into public.categories (owner, name)
-  select new.id, c from unnest(array[
+  insert into public.categories (owner, name, position)
+  select new.id, c, ord - 1 from unnest(array[
     'Закуска','Салата','Основно','Гарнитура','Десерт','Снакс','Друго'
-  ]) c;
+  ]) with ordinality as t(c, ord);
 
   insert into public.recipes (owner, name, cat, emoji, "time", servings, cal, ings, steps) values
   (new.id, 'Мусака - 4 порции', 'Основно', '🍲', '70 мин', '4', '185 kcal / 100 г',
@@ -210,5 +212,41 @@ $$;
 
 grant execute on function public.username_available(text)  to anon, authenticated;
 grant execute on function public.email_for_username(text)  to anon, authenticated;
+
+-- ---------- 5. Storage за снимките на рецептите ----------
+--  Публичен bucket, защото рецептите се споделят. Писането е ограничено
+--  до собствената папка на потребителя (<user_id>/...).
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('recipe-photos', 'recipe-photos', true, 5242880,
+        array['image/jpeg','image/png','image/webp'])
+on conflict (id) do update
+  set public = true,
+      file_size_limit = 5242880,
+      allowed_mime_types = array['image/jpeg','image/png','image/webp'];
+
+drop policy if exists "recipe photos readable by everyone" on storage.objects;
+create policy "recipe photos readable by everyone"
+  on storage.objects for select
+  using (bucket_id = 'recipe-photos');
+
+drop policy if exists "recipe photos insert own folder" on storage.objects;
+create policy "recipe photos insert own folder"
+  on storage.objects for insert to authenticated
+  with check (bucket_id = 'recipe-photos'
+              and (storage.foldername(name))[1] = auth.uid()::text);
+
+drop policy if exists "recipe photos update own folder" on storage.objects;
+create policy "recipe photos update own folder"
+  on storage.objects for update to authenticated
+  using (bucket_id = 'recipe-photos'
+         and (storage.foldername(name))[1] = auth.uid()::text)
+  with check (bucket_id = 'recipe-photos'
+              and (storage.foldername(name))[1] = auth.uid()::text);
+
+drop policy if exists "recipe photos delete own folder" on storage.objects;
+create policy "recipe photos delete own folder"
+  on storage.objects for delete to authenticated
+  using (bucket_id = 'recipe-photos'
+         and (storage.foldername(name))[1] = auth.uid()::text);
 
 -- ---------- готово ----------

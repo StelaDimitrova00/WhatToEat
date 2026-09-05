@@ -10,7 +10,7 @@ const sb = window.supabase.createClient(window.SUPABASE_URL, SUPABASE_KEY);
 const state = {
   user: null,            // supabase auth user
   username: null,        // от profiles
-  categories: [],        // ["Закуска", ...]
+  categories: [],        // ["Закуска", ...] — в реда, който потребителят си е подредил
   recipes: [],           // мои рецепти (app формат)
   week: {},              // {"Понеделник":[{id,meal}]}
   shopping: {},          // {"домати|бр": true} — отметки по продуктите от рецептите
@@ -25,12 +25,13 @@ function signedIn(){return !!state.user}
 function rowToRecipe(row){
   return {id:row.id,name:row.name,cat:row.cat,emoji:row.emoji||"🍽️",time:row.time||"",
     servings:row.servings||"",cal:row.cal||"",public:!!row.is_public,fav:!!row.fav,
-    fromFriend:row.from_friend||null,ings:row.ings||[],steps:row.steps||""};
+    fromFriend:row.from_friend||null,photo:row.photo||null,
+    ings:row.ings||[],steps:row.steps||""};
 }
 function recipeToRow(r){
   return {name:r.name,cat:r.cat,emoji:r.emoji||"🍽️",time:r.time||"",servings:String(r.servings||""),
     cal:r.cal||"",is_public:!!r.public,fav:!!r.fav,from_friend:r.fromFriend||null,
-    ings:r.ings||[],steps:r.steps||""};
+    photo:r.photo||null,ings:r.ings||[],steps:r.steps||""};
 }
 function ok(res){if(res.error)throw res.error;return res.data}
 
@@ -39,7 +40,7 @@ async function loadAll(){
   const uid = state.user.id;
   const [prof,cats,recs,week,shop,items,fr] = await Promise.all([
     sb.from("profiles").select("username").eq("id",uid).single(),
-    sb.from("categories").select("name").eq("owner",uid).order("name"),
+    sb.from("categories").select("name,position").eq("owner",uid).order("position").order("name"),
     sb.from("recipes").select("*").eq("owner",uid).order("created_at"),
     sb.from("week_plan").select("day,meal,recipe_id").eq("owner",uid),
     sb.from("shopping_state").select("item_key,done").eq("owner",uid),
@@ -63,12 +64,31 @@ function clearState(){
 
 /* ---------- CATEGORIES ---------- */
 async function dbAddCategory(name){
-  ok(await sb.from("categories").insert({owner:state.user.id,name}));
-  state.categories.push(name);state.categories.sort();
+  // новата отива най-отзад в подредбата
+  ok(await sb.from("categories").insert({owner:state.user.id,name,position:state.categories.length}));
+  state.categories.push(name);
 }
 async function dbRemoveCategory(name){
   ok(await sb.from("categories").delete().eq("owner",state.user.id).eq("name",name));
   state.categories = state.categories.filter(c=>c!==name);
+}
+/* Преименуване: и самата категория, и всички рецепти, които сочат към нея. */
+async function dbRenameCategory(oldName,newName){
+  ok(await sb.from("categories").update({name:newName})
+      .eq("owner",state.user.id).eq("name",oldName));
+  ok(await sb.from("recipes").update({cat:newName})
+      .eq("owner",state.user.id).eq("cat",oldName));
+  state.categories = state.categories.map(c=>c===oldName?newName:c);
+  state.recipes.forEach(r=>{if(r.cat===oldName)r.cat=newName});
+  if(activeCat===oldName)activeCat=newName;
+}
+/* Записва цялата подредба наведнъж — (owner,name) е уникално, така че
+   upsert-ът само обновява position на съществуващите редове. */
+async function dbSetCategoryOrder(names){
+  ok(await sb.from("categories").upsert(
+    names.map((name,i)=>({owner:state.user.id,name,position:i})),
+    {onConflict:"owner,name"}));
+  state.categories = names.slice();
 }
 
 /* ---------- RECIPES ---------- */
@@ -87,6 +107,42 @@ async function dbDeleteRecipe(id){
   ok(await sb.from("recipes").delete().eq("id",id));   // week_plan се чисти с ON DELETE CASCADE
   state.recipes = state.recipes.filter(x=>x.id!==id);
   Object.keys(state.week).forEach(d=>{state.week[d]=state.week[d].filter(x=>x.id!==id)});
+}
+
+/* ---------- RECIPE PHOTOS (Supabase Storage) ---------- */
+const PHOTO_BUCKET = "recipe-photos";
+
+/* В базата пазим само пътя; публичният URL се сглобява тук. */
+function photoUrl(path){
+  if(!path)return "";
+  return sb.storage.from(PHOTO_BUCKET).getPublicUrl(path).data.publicUrl;
+}
+function newPhotoPath(){
+  const rand = (crypto.randomUUID
+    ? crypto.randomUUID()
+    : Date.now()+"-"+Math.random().toString(16).slice(2));
+  return state.user.id+"/"+rand+".jpg";     // папката трябва да е user id заради policy-то
+}
+async function dbUploadPhoto(blob){
+  const path = newPhotoPath();
+  ok(await sb.storage.from(PHOTO_BUCKET).upload(path, blob, {contentType:"image/jpeg"}));
+  return path;
+}
+/* Триенето никога не бива да проваля основното действие. */
+async function dbDeletePhoto(path){
+  if(!path)return;
+  try{ await sb.storage.from(PHOTO_BUCKET).remove([path]); }
+  catch(e){ console.warn("Снимката не беше изтрита:", e); }
+}
+/* При копиране на чужда рецепта правим собствено копие на файла, за да не
+   изчезне снимката, ако оригиналът бъде изтрит. */
+async function dbCopyPhoto(path){
+  if(!path)return null;
+  try{
+    const dest = newPhotoPath();
+    ok(await sb.storage.from(PHOTO_BUCKET).copy(path, dest));
+    return dest;
+  }catch(e){ console.warn("Снимката не беше копирана:", e); return null; }
 }
 
 /* ---------- WEEK PLAN ---------- */
