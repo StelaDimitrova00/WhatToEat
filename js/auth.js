@@ -84,49 +84,57 @@ async function logout(){
   render();
 }
 
+function authHeader(title){
+  return `<div class="auth-logo"><span class="mark">\u{1F958}</span><h2>${title}</h2></div>`;
+}
 function renderAuth(){
   const app=document.getElementById("app");
+  const tabs=`<div class="authtabs">
+<button class="${authMode==="login"?"active":""}" onclick="switchAuth('login')">Вход</button>
+<button class="${authMode==="register"?"active":""}" onclick="switchAuth('register')">Регистрация</button>
+</div>`;
+
   if(authMode==="login"){
     app.innerHTML=`<div class="authwrap">
-<div class="authtabs"><button class="active" onclick="switchAuth('login')">Вход</button><button onclick="switchAuth('register')">Регистрация</button></div>
-<h2 style="margin-top:0">Влез в профила си</h2>
+${authHeader("Добре дошъл отново")}
+${tabs}
 <form onsubmit="doLogin(event)">
-<div class="field"><label>Потребителско име или имейл</label><input id="log_user" required autocomplete="username"></div>
-<div class="field" style="margin-top:10px"><label>Парола</label><input id="log_pass" type="password" required autocomplete="current-password"></div>
-<button class="primary" style="margin-top:16px;width:100%">Вход</button>
+<div class="field"><label>Потребителско име или имейл</label><input id="log_user" required autocomplete="username" placeholder="stela или stela@mail.com"></div>
+<div class="field"><label>Парола</label><input id="log_pass" type="password" required autocomplete="current-password" placeholder="••••••••"></div>
+<button class="btn primary btn-block" style="margin-top:20px">Вход</button>
 </form>
-<p style="margin-top:12px"><a href="#" onclick="switchAuth('forgot');return false" style="color:var(--green)">Забравена парола?</a></p>
+<p style="margin-top:16px;text-align:center"><a href="#" onclick="switchAuth('forgot');return false">Забравена парола?</a></p>
 </div>`;
   }else if(authMode==="register"){
     app.innerHTML=`<div class="authwrap">
-<div class="authtabs"><button onclick="switchAuth('login')">Вход</button><button class="active" onclick="switchAuth('register')">Регистрация</button></div>
-<h2 style="margin-top:0">Създай профил</h2>
+${authHeader("Създай профил")}
+${tabs}
 <form onsubmit="doRegister(event)">
-<div class="field"><label>Потребителско име</label><input id="reg_user" required autocomplete="username"></div>
-<div class="field" style="margin-top:10px"><label>Имейл</label><input id="reg_email" type="email" required autocomplete="email"></div>
-<div class="field" style="margin-top:10px"><label>Парола</label><input id="reg_pass" type="password" required autocomplete="new-password"></div>
-<div class="field" style="margin-top:10px"><label>Потвърди парола</label><input id="reg_pass2" type="password" required autocomplete="new-password"></div>
-<button class="primary" style="margin-top:16px;width:100%">Регистрирай се</button>
+<div class="field"><label>Потребителско име</label><input id="reg_user" required autocomplete="username" placeholder="Как да те намират приятелите"></div>
+<div class="field"><label>Имейл</label><input id="reg_email" type="email" required autocomplete="email" placeholder="stela@mail.com"></div>
+<div class="field"><label>Парола</label><input id="reg_pass" type="password" required autocomplete="new-password" placeholder="Поне 6 символа"></div>
+<div class="field"><label>Потвърди парола</label><input id="reg_pass2" type="password" required autocomplete="new-password" placeholder="••••••••"></div>
+<button class="btn primary btn-block" style="margin-top:20px">Регистрирай се</button>
 </form>
 </div>`;
   }else if(authMode==="recovery"){
     app.innerHTML=`<div class="authwrap">
-<h2 style="margin-top:0">Задай нова парола</h2>
+${authHeader("Задай нова парола")}
 <form onsubmit="doRecovery(event)">
-<div class="field"><label>Нова парола</label><input id="rc_pass" type="password" required autocomplete="new-password"></div>
-<div class="field" style="margin-top:10px"><label>Потвърди новата парола</label><input id="rc_pass2" type="password" required autocomplete="new-password"></div>
-<button class="primary" style="margin-top:16px;width:100%">Запази паролата</button>
+<div class="field"><label>Нова парола</label><input id="rc_pass" type="password" required autocomplete="new-password" placeholder="Поне 6 символа"></div>
+<div class="field"><label>Потвърди новата парола</label><input id="rc_pass2" type="password" required autocomplete="new-password" placeholder="••••••••"></div>
+<button class="btn primary btn-block" style="margin-top:20px">Запази паролата</button>
 </form>
 </div>`;
   }else{
     app.innerHTML=`<div class="authwrap">
-<h2 style="margin-top:0">Забравена парола</h2>
-<p class="muted">Въведи имейла, с който си регистриран — ще ти изпратим линк за задаване на нова парола.</p>
+${authHeader("Забравена парола")}
+<p class="muted" style="text-align:center;margin-bottom:22px">Въведи имейла си — ще ти изпратим линк за нова парола.</p>
 <form onsubmit="doForgot(event)">
-<div class="field"><label>Имейл</label><input id="fg_email" type="email" required autocomplete="email"></div>
-<button class="primary" style="margin-top:16px;width:100%">Изпрати линк</button>
+<div class="field"><label>Имейл</label><input id="fg_email" type="email" required autocomplete="email" placeholder="stela@mail.com"></div>
+<button class="btn primary btn-block" style="margin-top:20px">Изпрати линк</button>
 </form>
-<p style="margin-top:12px"><a href="#" onclick="switchAuth('login');return false" style="color:var(--green)">Обратно към вход</a></p>
+<p style="margin-top:16px;text-align:center"><a href="#" onclick="switchAuth('login');return false">← Обратно към вход</a></p>
 </div>`;
   }
 }

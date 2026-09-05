@@ -9,13 +9,15 @@ function recipePhotoHtml(r, cls){
 function addToWeek(id){pickDay(null,id)}
 function pickDay(day,id){
   const r=id?me().recipes.find(x=>x.id===id):null;
-  openModal(`<div class="modalbox"><button class="close" onclick="closeModal()">×</button>
-<h2>Добави ${r?"„"+escHtml(r.name)+"“":"рецепта"} към ден</h2>
+  openModal(modalShell(r?"Добави в менюто":"Добави ястие",
+`${r?`<p class="muted" style="margin-bottom:16px">„${escHtml(r.name)}“</p>`:""}
+${!r?`<div class="field" style="margin-bottom:14px"><label>Рецепта</label><select id="pickRecipe">${me().recipes.map(x=>`<option value="${escHtml(x.id)}">${escHtml(x.name)}</option>`).join("")}</select></div>`:""}
+<div class="formgrid">
 <div class="field"><label>Ден</label><select id="pickDay">${DAYS.map(d=>`<option ${day===d?"selected":""}>${d}</option>`).join("")}</select></div>
-<div class="field" style="margin-top:10px"><label>Кога</label><select id="pickMeal">${MEALS.map(m=>`<option>${m}</option>`).join("")}</select></div>
-${!r?`<div class="field" style="margin-top:10px"><label>Рецепта</label><select id="pickRecipe">${me().recipes.map(x=>`<option value="${escHtml(x.id)}">${escHtml(x.name)}</option>`).join("")}</select></div>`:""}
-<button class="primary" style="margin-top:16px" onclick="confirmDay('${escJs(id||"")}',this)">Добави</button>
-</div>`);
+<div class="field"><label>Кога</label><select id="pickMeal">${MEALS.map(m=>`<option>${m}</option>`).join("")}</select></div>
+</div>`,
+`<button class="btn ghost" onclick="closeModal()">Откажи</button>
+ <button class="btn primary" onclick="confirmDay('${escJs(id||"")}',this)">Добави</button>`));
 }
 async function confirmDay(id,btn){
   await guard(btn, async ()=>{
@@ -41,19 +43,21 @@ function openRecipe(id){
   const r=me().recipes.find(x=>x.id===id);
   if(!r)return;
   const steps=(r.steps||"").split(/\n+/).filter(Boolean);
-  openModal(`<div class="modalbox recipe-detail"><button class="close" onclick="closeModal()">×</button>
-${recipePhotoHtml(r,"recipe-img")}<span class="tag">${escHtml(r.cat)}${r.public?" · Публична":" · Лична"}${r.fromFriend?" · от @"+escHtml(r.fromFriend):""}</span><h1>${escHtml(r.name)}</h1>
-<p class="muted">${r.time?escHtml(r.time)+" · ":""}${r.servings?escHtml(r.servings)+" порции · ":""}${escHtml(r.cal||"")}</p>
-<div class="actions">
-<button onclick="toggleFav('${escJs(r.id)}',this)">${r.fav?"♥ Премахни от любими":"♡ Добави в любими"}</button>
-<button class="add" onclick="addToWeek('${escJs(r.id)}')">+ В меню</button>
-<button onclick="editRecipe('${escJs(r.id)}')">✏️ Редактирай</button>
-<button onclick="shareRecipe('${escJs(r.id)}',this)">🔗 ${r.public?"Направи лична":"Направи публична"}</button>
-<button onclick="deleteRecipe('${escJs(r.id)}',this)" style="border-color:#d8b8b0;color:#8d493e">🗑️ Изтрий</button>
+  openModal(modalShell(escHtml(r.name),
+`${recipePhotoHtml(r,"recipe-img")}
+<span class="tag">${escHtml(r.cat)}${r.public?" · Публична":" · Лична"}${r.fromFriend?" · от @"+escHtml(r.fromFriend):""}</span>
+${recipeMeta(r)}
+<div class="actions" style="margin-top:18px">
+<button class="btn ${r.fav?"soft":"ghost"} btn-sm" onclick="toggleFav('${escJs(r.id)}',this)">${r.fav?"♥ В любими":"♡ В любими"}</button>
+<button class="btn ghost btn-sm" onclick="editRecipe('${escJs(r.id)}')">✏️ Редактирай</button>
+<button class="btn ghost btn-sm" onclick="shareRecipe('${escJs(r.id)}',this)">🔗 ${r.public?"Направи лична":"Сподели"}</button>
+<button class="btn danger btn-sm" onclick="deleteRecipe('${escJs(r.id)}',this)">🗑️ Изтрий</button>
 </div>
-<h2>Необходими продукти${unitsLinkHtml()}</h2><div class="ingredient-list">${r.ings.map(x=>`<div><b>${escHtml(x[0])} ${escHtml(x[1])}</b> ${escHtml(x[2])}</div>`).join("")}</div>
-<h2>Начин на приготвяне</h2>${steps.map((s,i)=>`<div class="step"><span class="stepno">${i+1}</span><div>${escHtml(s)}</div></div>`).join("")}
-</div>`);
+<h2>Необходими продукти${unitsLinkHtml()}</h2>
+<div class="ingredient-list">${r.ings.map(x=>`<div><b>${escHtml(x[0])} ${escHtml(x[1])}</b> ${escHtml(x[2])}</div>`).join("")}</div>
+<h2>Начин на приготвяне</h2>${steps.map((s,i)=>`<div class="step"><span class="stepno">${i+1}</span><div>${escHtml(s)}</div></div>`).join("")||`<p class="muted">Няма описани стъпки.</p>`}`,
+`<button class="btn primary" onclick="addToWeek('${escJs(r.id)}')">+ Добави в менюто</button>`,
+"recipe-detail"));
 }
 async function toggleFav(id,btn){
   await guard(btn, async ()=>{
@@ -146,29 +150,41 @@ function ingredientNames(){const set=new Set();me().recipes.forEach(r=>r.ings.fo
 function openRecipeForm(editId){
   const r=editId?me().recipes.find(x=>x.id===editId):null;
   resetFormPhoto(r?r.photo:null);
-  openModal(`<div class="modalbox"><button class="close" onclick="closeModal()">×</button>
-<h2>${r?"Редактирай рецепта":"Нова рецепта"}</h2>
-<datalist id="ingNames">${ingredientNames().map(n=>`<option value="${escHtml(n)}">`).join("")}</datalist>
-<form onsubmit="${r?`saveEditRecipe(event,'${escJs(r.id)}')`:"createRecipe(event)"}">
+  openModal(modalShell(r?"Редактирай рецепта":"Нова рецепта",
+`<datalist id="ingNames">${ingredientNames().map(n=>`<option value="${escHtml(n)}">`).join("")}</datalist>
+<form id="recipeForm" onsubmit="${r?`saveEditRecipe(event,'${escJs(r.id)}')`:"createRecipe(event)"}">
 <div class="formgrid">
 <div class="field full"><label>Име *</label><input id="rn" required value="${r?escHtml(r.name):""}" placeholder="Напр. Мусака - 4 порции"></div>
-<div class="field"><label>Категория *</label><select id="rc">${me().categories.map(c=>`<option ${r&&r.cat===c?"selected":""}>${escHtml(c)}</option>`).join("")}</select></div>
-<div class="field"><label>Нова категория (по желание)</label><input id="rnewcat" placeholder="напр. Meal prep"></div>
-<div class="field"><label>Време (по желание)</label><input id="rt" value="${r?escHtml(r.time||""):""}" placeholder="45 мин"></div>
-<div class="field"><label>Порции (по желание)</label><input id="rs" type="number" min="1" value="${r&&r.servings?escHtml(r.servings):""}"></div>
-<div class="field full"><label>Калории (по желание)</label><div style="display:flex;gap:10px"><input id="rk" type="number" min="0" placeholder="250" value="${r&&r.cal?escHtml(r.cal.split(" ")[0]):""}"><select id="rkunit"><option>за 100 г</option><option>за порция</option></select></div></div>
-<div class="field full"><label>Снимка (по желание)</label>
-<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
-<div id="photoBox" class="photo" style="width:132px;height:99px;border-radius:14px;font-size:38px;flex:none">${formPhotoBoxHtml(r)}</div>
-<div style="display:flex;flex-direction:column;gap:8px">
-<input type="file" id="rphoto" accept="image/*" onchange="onPhotoPick(this)">
-<button type="button" class="ghost" id="photoClear" onclick="clearPhotoPick()" style="display:${(r&&r.photo)?"":"none"}">Махни снимката</button>
+
+<div class="field full"><label>Снимка</label>
+<div class="photo-picker">
+<div id="photoBox" class="photo">${formPhotoBoxHtml(r)}</div>
+<div style="display:flex;flex-direction:column;gap:9px">
+<input type="file" id="rphoto" class="file-input" accept="image/*" onchange="onPhotoPick(this)">
+<button type="button" class="btn ghost btn-sm" id="photoClear" onclick="clearPhotoPick()" style="display:${(r&&r.photo)?"":"none"};align-self:flex-start">Махни снимката</button>
+<span class="hint">Смалява се автоматично преди качване.</span>
 </div></div></div>
-<div class="field full"><label>Продукти *</label><div class="ingredients" id="ings"></div><div style="display:flex;gap:8px;margin-top:4px"><button type="button" class="ghost" onclick="addIng()">+ Добави продукт</button><a class="ghost" style="text-decoration:none;display:inline-flex;align-items:center" href="https://www.supichka.com/%D1%80%D0%B5%D1%86%D0%B5%D0%BF%D1%82%D0%B0/453/%D0%BC%D0%B5%D1%80%D0%BD%D0%B8-%D0%B5%D0%B4%D0%B8%D0%BD%D0%B8%D1%86%D0%B8-%D0%B2-%D0%BA%D1%83%D1%85%D0%BD%D1%8F%D1%82%D0%B0-%D0%BA%D1%83%D1%85%D0%BD%D0%B5%D0%BD%D1%81%D0%BA%D0%B8-%D0%BC%D0%B5%D1%80%D0%BA%D0%B8" target="_blank" rel="noopener">📏 Мерни единици</a></div></div>
-<div class="field full"><label>Начин на приготвяне</label><textarea id="rsteps" placeholder="Напиши стъпките свободно...">${r?escHtml(r.steps):""}</textarea></div>
-</div>
-<div style="margin-top:18px"><button class="primary">${r?"Запази промените":"Запази рецептата"}</button></div>
-</form></div>`);
+
+<div class="field"><label>Категория *</label><select id="rc">${me().categories.map(c=>`<option ${r&&r.cat===c?"selected":""}>${escHtml(c)}</option>`).join("")}</select></div>
+<div class="field"><label>Нова категория</label><input id="rnewcat" placeholder="напр. Meal prep"></div>
+<div class="field"><label>Време</label><input id="rt" value="${r?escHtml(r.time||""):""}" placeholder="45 мин"></div>
+<div class="field"><label>Порции</label><input id="rs" type="number" min="1" value="${r&&r.servings?escHtml(r.servings):""}" placeholder="4"></div>
+<div class="field full"><label>Калории</label>
+<div style="display:flex;gap:10px"><input id="rk" type="number" min="0" placeholder="250" value="${r&&r.cal?escHtml(r.cal.split(" ")[0]):""}" style="flex:1">
+<select id="rkunit" style="flex:none;width:150px"><option>за 100 г</option><option>за порция</option></select></div></div>
+
+<div class="field full"><label>Продукти *</label>
+<div class="ingredients" id="ings"></div>
+<div style="display:flex;gap:9px;margin-top:9px;align-items:center;flex-wrap:wrap">
+<button type="button" class="btn ghost btn-sm" onclick="addIng()">+ Добави продукт</button>
+<a href="https://www.supichka.com/%D1%80%D0%B5%D1%86%D0%B5%D0%BF%D1%82%D0%B0/453/%D0%BC%D0%B5%D1%80%D0%BD%D0%B8-%D0%B5%D0%B4%D0%B8%D0%BD%D0%B8%D1%86%D0%B8-%D0%B2-%D0%BA%D1%83%D1%85%D0%BD%D1%8F%D1%82%D0%B0-%D0%BA%D1%83%D1%85%D0%BD%D0%B5%D0%BD%D1%81%D0%BA%D0%B8-%D0%BC%D0%B5%D1%80%D0%BA%D0%B8" target="_blank" rel="noopener" class="hint">📏 Мерни единици</a>
+<span class="hint">Количеството приема и дроби: 1/2, 1 1/4</span>
+</div></div>
+
+<div class="field full"><label>Начин на приготвяне</label><textarea id="rsteps" placeholder="Всеки ред е отделна стъпка...">${r?escHtml(r.steps):""}</textarea></div>
+</div></form>`,
+`<button class="btn ghost" onclick="closeModal()">Откажи</button>
+ <button class="btn primary" type="submit" form="recipeForm">${r?"Запази промените":"Запази рецептата"}</button>`));
   if(r){r.ings.forEach(i=>addIng(i))}else{addIng();addIng();addIng()}
 }
 function addIng(prefill){
@@ -197,7 +213,7 @@ function readForm(){
 }
 async function createRecipe(ev){
   ev.preventDefault();
-  const btn=ev.target.querySelector("button.primary");
+  const btn=document.querySelector(".modal-foot .primary");
   await guard(btn, async ()=>{
     const f=readForm();
     if(!f.ings.length){toast("Добави поне един продукт");return}
@@ -212,7 +228,7 @@ async function createRecipe(ev){
 function editRecipe(id){closeModal();openRecipeForm(id)}
 async function saveEditRecipe(ev,id){
   ev.preventDefault();
-  const btn=ev.target.querySelector("button.primary");
+  const btn=document.querySelector(".modal-foot .primary");
   await guard(btn, async ()=>{
     const r=me().recipes.find(x=>x.id===id);
     if(!r)return;

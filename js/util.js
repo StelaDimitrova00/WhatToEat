@@ -40,8 +40,50 @@ function escHtml(s){return String(s??"").replace(/&/g,"&amp;").replace(/"/g,"&qu
    първо екранираме за JS, после за HTML — браузърът връща точния низ обратно. */
 function escJs(s){return escHtml(String(s ?? "").replace(/\\/g, "\\\\").replace(/'/g, "\\'"))}
 function toast(t){const e=document.getElementById("toast");e.textContent=t;e.classList.remove("hidden");clearTimeout(toast._t);toast._t=setTimeout(()=>e.classList.add("hidden"),2200)}
-function openModal(html){const m=document.getElementById("modal");m.classList.remove("hidden");m.innerHTML=html}
-function closeModal(){document.getElementById("modal").classList.add("hidden")}
+function openModal(html){
+  const m=document.getElementById("modal");
+  m.classList.remove("hidden");
+  m.innerHTML=html;
+  document.body.style.overflow="hidden";
+}
+function closeModal(){
+  document.getElementById("modal").classList.add("hidden");
+  document.body.style.overflow="";
+}
+/* Обща рамка за модал: закачена заглавка, скролващо тяло, закачен ред с бутони. */
+function modalShell(title,body,foot,cls){
+  return `<div class="modalbox ${cls||""}">
+<div class="modal-head"><h2>${title}</h2><button class="close" onclick="closeModal()" aria-label="Затвори">×</button></div>
+<div class="modal-body">${body}</div>
+${foot?`<div class="modal-foot">${foot}</div>`:""}
+</div>`;
+}
+/* Затваряне с клик върху фона и с Esc. */
+document.addEventListener("click",e=>{
+  if(e.target&&e.target.id==="modal")closeModal();
+});
+document.addEventListener("keydown",e=>{
+  if(e.key==="Escape"&&!document.getElementById("modal").classList.contains("hidden"))closeModal();
+});
+
+/* ---------- ПРАЗНИ СЪСТОЯНИЯ / ЗАРЕЖДАНЕ ---------- */
+function emptyState(icon,title,text,action){
+  return `<div class="empty"><span class="ei">${icon}</span><h3>${escHtml(title)}</h3>${text?`<p>${escHtml(text)}</p>`:""}${action||""}</div>`;
+}
+function skeletonCards(n){
+  return `<div class="grid">${Array.from({length:n||6},()=>`
+<div class="sk-card"><div class="sk sk-img"></div><div class="sk-body">
+<div class="sk" style="height:11px;width:35%"></div>
+<div class="sk" style="height:17px;width:75%"></div>
+<div class="sk" style="height:11px;width:55%"></div>
+</div></div>`).join("")}</div>`;
+}
+function initials(name){
+  const s=String(name||"").trim();
+  if(!s)return "?";
+  const parts=s.split(/[\s._-]+/).filter(Boolean);
+  return (parts.length>1?parts[0][0]+parts[1][0]:s.slice(0,2)).toUpperCase();
+}
 function unitsLinkHtml(){return `<a href="https://www.supichka.com/%D1%80%D0%B5%D1%86%D0%B5%D0%BF%D1%82%D0%B0/453/%D0%BC%D0%B5%D1%80%D0%BD%D0%B8-%D0%B5%D0%B4%D0%B8%D0%BD%D0%B8%D1%86%D0%B8-%D0%B2-%D0%BA%D1%83%D1%85%D0%BD%D1%8F%D1%82%D0%B0-%D0%BA%D1%83%D1%85%D0%BD%D0%B5%D0%BD%D1%81%D0%BA%D0%B8-%D0%BC%D0%B5%D1%80%D0%BA%D0%B8" target="_blank" rel="noopener" style="font-size:12px;color:var(--green);text-decoration:none;margin-left:10px;font-weight:400">📏 Мерни единици</a>`}
 
 /* Спира двойно натискане на бутон, докато чакаме базата. */
@@ -72,4 +114,4 @@ async function resizeImage(file, maxSide=PHOTO_MAX_SIDE, quality=PHOTO_QUALITY){
   return blob;
 }
 
-function loadingHtml(text){return `<p class="muted" style="padding:20px 0">${escHtml(text||"Зареждане...")}</p>`}
+function loadingHtml(text){return `<p class="muted" style="padding:22px 0">${escHtml(text||"Зареждане...")}</p>`}

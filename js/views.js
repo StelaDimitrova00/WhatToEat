@@ -1,17 +1,45 @@
 /* ---------- HOME (my recipes) ---------- */
-function setCat(c){activeCat=c;render()}
+/* Смяна на категория без пълно пре-рендиране — на споделените рецепти
+   пълният render() значеше ново теглене от базата при всеки клик. */
+function setCat(c){
+  activeCat=c;
+  const chips=document.querySelectorAll("#app .catlist .cat");
+  if(!chips.length){render();return}
+  chips.forEach(b=>b.classList.toggle("active",b.dataset.c===c));
+  const h=document.querySelector("#app .browse .section-head h2");
+  if(h)h.textContent=(c==="Всички")
+    ?(currentView==="public"?"Всички споделени":"Моите рецепти")
+    :c;
+  if(currentView==="public")renderPublicCards();else renderCards();
+}
 
-function catChips(){
-  return ["Всички",...me().categories].map(c=>
-    `<button class="cat ${activeCat===c?"active":""}" data-c="${escHtml(c)}" onclick="setCat(this.dataset.c)">${escHtml(c)}</button>`
-  ).join("")+`<button class="cat" onclick="openAddCategoryModal()">+ Категория</button>`;
+/* Страничната лента с категории. `counts` е {категория: брой}. */
+function catSidebar(cats,counts,total,addBtn){
+  const item=(c,n)=>`<button class="cat ${activeCat===c?"active":""}" data-c="${escHtml(c)}" onclick="setCat(this.dataset.c)">${escHtml(c)}<span class="cnt">${n}</span></button>`;
+  return `<aside class="sidebar">
+<div class="side-title">Категории</div>
+<div class="categories catlist">
+${item("Всички",total)}
+${cats.map(c=>item(c,counts[c]||0)).join("")}
+${addBtn?`<button class="cat add" onclick="openAddCategoryModal()">+ Категория</button>`:""}
+</div></aside>`;
+}
+function catSidebarMine(){
+  const counts={};
+  me().recipes.forEach(r=>{counts[r.cat]=(counts[r.cat]||0)+1});
+  return catSidebar(me().categories,counts,me().recipes.length,true);
+}
+function catSidebarPublic(){
+  const counts={};
+  me().publicRecipes.forEach(x=>{counts[x.r.cat]=(counts[x.r.cat]||0)+1});
+  return catSidebar(publicCategories(),counts,me().publicRecipes.length,false);
 }
 function openAddCategoryModal(){
-  openModal(`<div class="modalbox"><button class="close" onclick="closeModal()">×</button>
-<h2>Нова категория</h2>
-<div class="field"><label>Име на категория</label><input id="quickCatName" placeholder="напр. Скара"></div>
-<button class="primary" style="margin-top:16px" onclick="confirmQuickCategory(this)">Добави</button>
-</div>`);
+  openModal(modalShell("Нова категория",
+    `<div class="field"><label>Име на категория</label><input id="quickCatName" placeholder="напр. Скара"></div>`,
+    `<button class="btn ghost" onclick="closeModal()">Откажи</button>
+     <button class="btn primary" onclick="confirmQuickCategory(this)">Добави</button>`));
+  setTimeout(()=>document.getElementById("quickCatName")?.focus(),0);
 }
 async function confirmQuickCategory(btn){
   await guard(btn, async ()=>{
@@ -28,17 +56,54 @@ function filtered(){
   return me().recipes.filter(r=>(activeCat==="Всички"||r.cat===activeCat)&&
     (q===""||r.name.toLowerCase().includes(q)||r.cat.toLowerCase().includes(q)));
 }
+function recipeMeta(r){
+  const bits=[];
+  if(r.time)bits.push("\u23F1 "+escHtml(r.time));
+  if(r.servings)bits.push("\u{1F37D} "+escHtml(r.servings)+" порции");
+  if(r.cal)bits.push("\u{1F525} "+escHtml(r.cal));
+  return bits.length?`<div class="meta">${bits.map(b=>`<span>${b}</span>`).join("")}</div>`:"";
+}
 function card(r){
-  return `<article class="card">${recipePhotoHtml(r,"photo")}<div class="cardbody"><span class="tag">${escHtml(r.cat)}${r.public?" · Публична":" · Лична"}</span><h3>${escHtml(r.name)}</h3><div class="muted">${r.time?escHtml(r.time)+" · ":""}${r.servings?escHtml(r.servings)+" порции":""}${r.cal?" · "+escHtml(r.cal):""}</div><div class="actions"><button onclick="openRecipe('${escJs(r.id)}')">Виж рецепта</button><button class="add" onclick="addToWeek('${escJs(r.id)}')">+ В меню</button></div></div></article>`;
+  return `<article class="card">
+${recipePhotoHtml(r,"photo")}${r.fav?`<span class="fav-dot" title="Любима">\u2665</span>`:""}
+<div class="cardbody">
+<div class="card-tags"><span class="tag">${escHtml(r.cat)}${r.public?" · Публична":""}</span></div>
+<h3>${escHtml(r.name)}</h3>
+${recipeMeta(r)}
+<div class="actions">
+<button class="btn ghost btn-sm" onclick="openRecipe('${escJs(r.id)}')">Виж рецепта</button>
+<button class="btn primary btn-sm" onclick="addToWeek('${escJs(r.id)}')">+ В меню</button>
+</div></div></article>`;
+}
+function homeCardsHtml(){
+  const list=filtered();
+  if(list.length)return `<div class="grid">${list.map(card).join("")}</div>`;
+  if(me().recipes.length)
+    return emptyState("\u{1F50D}","Няма намерени рецепти","Опитай с друга дума или избери друга категория.");
+  return emptyState("\u{1F4D2}","Тук още е празно","Добави първата си рецепта и започни да планираш седмицата.",
+    `<button class="btn primary" onclick="openRecipeForm()">+ Нова рецепта</button>`);
 }
 function renderHome(app){
-  app.innerHTML=`<section class="hero"><div class="eyebrow">Домашно меню · рецепти · пазаруване</div><h1>Какво ще готвим днес?</h1><p>Събирай любимите си рецепти, планирай седмицата и превръщай избраното меню в един удобен списък за пазаруване.</p>
-<div class="search"><input id="search" placeholder="🔎 Търси рецепта..." oninput="renderCards()"><button class="primary">Търси</button></div></section>
-<div class="section-title"><h2>Категории</h2></div><div class="categories">${catChips()}</div>
-<div class="section-title"><h2>Моите рецепти</h2><button class="ghost" onclick="openRecipeForm()">+ Нова рецепта</button></div>
-<div id="cards" class="grid">${filtered().map(card).join("")||"<p class='muted'>Няма намерени рецепти.</p>"}</div>`;
+  const shown=filtered().length;
+  app.innerHTML=`<section class="hero">
+<div class="eyebrow">Домашно меню · рецепти · пазаруване</div>
+<h1>Какво ще готвим днес?</h1>
+<p>Събирай любимите си рецепти, планирай седмицата и превръщай избраното меню в един удобен списък за пазаруване.</p>
+</section>
+<div class="browse">
+${catSidebarMine()}
+<div>
+<div class="section-head" style="margin-top:0"><div><h2>${activeCat==="Всички"?"Моите рецепти":escHtml(activeCat)}</h2><div class="sub" id="cardCount">${shown} ${shown===1?"рецепта":"рецепти"}</div></div>
+<button class="btn ghost" onclick="openRecipeForm()">+ Нова рецепта</button></div>
+<div id="cards">${homeCardsHtml()}</div>
+</div></div>`;
 }
-function renderCards(){const e=document.getElementById("cards");if(e)e.innerHTML=filtered().map(card).join("")||"<p class='muted'>Няма намерени рецепти.</p>"}
+function renderCards(){
+  const e=document.getElementById("cards");
+  if(e)e.innerHTML=homeCardsHtml();
+  const c=document.getElementById("cardCount");
+  if(c){const n=filtered().length;c.textContent=`${n} ${n===1?"рецепта":"рецепти"}`}
+}
 
 /* ---------- PUBLIC FEED (everyone's shared recipes) ---------- */
 function publicCategories(){const set=new Set();me().publicRecipes.forEach(x=>set.add(x.r.cat));return[...set]}
@@ -51,46 +116,82 @@ function publicItems(){
 }
 function publicCard(owner,r){
   const mine=owner===me().username;
-  return `<article class="card">${recipePhotoHtml(r,"photo")}<div class="cardbody"><span class="tag">${escHtml(r.cat)}</span><span class="badge">${mine?"твоя":"от @"+escHtml(owner)}</span><h3>${escHtml(r.name)}</h3><div class="muted">${r.time?escHtml(r.time)+" · ":""}${r.servings?escHtml(r.servings)+" порции":""}${r.cal?" · "+escHtml(r.cal):""}</div><div class="actions">${mine?`<button onclick="openRecipe('${escJs(r.id)}')">Виж рецепта</button><button class="add" onclick="addToWeek('${escJs(r.id)}')">+ В меню</button>`:`<button onclick="openForeignRecipe('${escJs(r.id)}')">Виж рецепта</button>`}</div></div></article>`;
+  return `<article class="card">
+${recipePhotoHtml(r,"photo")}
+<div class="cardbody">
+<div class="card-tags"><span class="tag">${escHtml(r.cat)}</span><span class="badge">${mine?"твоя":"@"+escHtml(owner)}</span></div>
+<h3>${escHtml(r.name)}</h3>
+${recipeMeta(r)}
+<div class="actions">${mine
+  ?`<button class="btn ghost btn-sm" onclick="openRecipe('${escJs(r.id)}')">Виж рецепта</button><button class="btn primary btn-sm" onclick="addToWeek('${escJs(r.id)}')">+ В меню</button>`
+  :`<button class="btn ghost btn-sm" onclick="openForeignRecipe('${escJs(r.id)}')">Виж рецепта</button>`}</div>
+</div></article>`;
+}
+function publicCardsHtml(){
+  const items=publicItems();
+  if(items.length)return `<div class="grid">${items.map(x=>publicCard(x.owner,x.r)).join("")}</div>`;
+  if(me().publicRecipes.length)
+    return emptyState("\u{1F50D}","Няма намерени рецепти","Опитай с друга дума или категория.");
+  return emptyState("\u{1F30D}","Още няма споделени рецепти","Сподели своя рецепта и тя ще се появи тук за всички.");
 }
 async function renderPublicFeed(app){
-  app.innerHTML=`<section class="hero"><div class="eyebrow">Общност</div><h1>Споделени рецепти</h1><p>Разгледай публичните рецепти на всички потребители и ги добави към своите.</p>
-<div class="search"><input id="search" placeholder="🔎 Търси рецепта..." oninput="renderPublicCards()"><button class="primary">Търси</button></div></section>
-<div id="publicBody">${loadingHtml("Зареждане на споделените рецепти...")}</div>`;
+  app.innerHTML=`<section class="hero">
+<div class="eyebrow">Общност</div>
+<h1>Споделени рецепти</h1>
+<p>Разгледай публичните рецепти на всички потребители и ги добави към своите.</p>
+</section>
+<div id="publicBody">${skeletonCards(6)}</div>`;
   try{ await dbLoadPublic(); }
-  catch(e){ console.error(e); const b=document.getElementById("publicBody"); if(b)b.innerHTML="<p class='muted'>Неуспешно зареждане.</p>"; return; }
+  catch(e){
+    console.error(e);
+    const b=document.getElementById("publicBody");
+    if(b)b.innerHTML=emptyState("\u26A0\uFE0F","Неуспешно зареждане","Провери връзката си и опитай пак.",
+      `<button class="btn ghost" onclick="showPublic()">Опитай пак</button>`);
+    return;
+  }
   if(currentView!=="public")return;
   const body=document.getElementById("publicBody");
   if(!body)return;
-  body.innerHTML=`<div class="section-title"><h2>Категории</h2></div><div class="categories">${["Всички",...publicCategories()].map(c=>`<button class="cat ${activeCat===c?"active":""}" data-c="${escHtml(c)}" onclick="setCat(this.dataset.c)">${escHtml(c)}</button>`).join("")}</div>
-<div class="section-title"><h2>Всички споделени рецепти</h2></div>
-<div id="cards" class="grid">${publicItems().map(x=>publicCard(x.owner,x.r)).join("")||"<p class='muted'>Все още няма споделени рецепти.</p>"}</div>`;
+  const shown=publicItems().length;
+  body.innerHTML=`<div class="browse">
+${catSidebarPublic()}
+<div>
+<div class="section-head" style="margin-top:0"><div><h2>${activeCat==="Всички"?"Всички споделени":escHtml(activeCat)}</h2><div class="sub" id="cardCount">${shown} от общността</div></div></div>
+<div id="cards">${publicCardsHtml()}</div>
+</div></div>`;
 }
-function renderPublicCards(){const e=document.getElementById("cards");if(e)e.innerHTML=publicItems().map(x=>publicCard(x.owner,x.r)).join("")||"<p class='muted'>Все още няма споделени рецепти.</p>"}
+function renderPublicCards(){
+  const e=document.getElementById("cards");
+  if(e)e.innerHTML=publicCardsHtml();
+  const c=document.getElementById("cardCount");
+  if(c)c.textContent=`${publicItems().length} от общността`;
+}
 
 function openForeignRecipe(id){
   const item=findPublic(id);
   if(!item)return;
   const r=item.r, owner=item.owner;
   const steps=(r.steps||"").split(/\n+/).filter(Boolean);
-  openModal(`<div class="modalbox recipe-detail"><button class="close" onclick="closeModal()">×</button>
-${recipePhotoHtml(r,"recipe-img")}<span class="tag">${escHtml(r.cat)} · от @${escHtml(owner)}</span><h1>${escHtml(r.name)}</h1>
-<p class="muted">${r.time?escHtml(r.time)+" · ":""}${r.servings?escHtml(r.servings)+" порции · ":""}${escHtml(r.cal||"")}</p>
-<div class="actions"><button class="add" onclick="addFriendRecipe('${escJs(r.id)}')">+ Добави към моите рецепти</button></div>
-<h2>Необходими продукти${unitsLinkHtml()}</h2><div class="ingredient-list">${r.ings.map(x=>`<div><b>${escHtml(x[0])} ${escHtml(x[1])}</b> ${escHtml(x[2])}</div>`).join("")}</div>
-<h2>Начин на приготвяне</h2>${steps.map((s,i)=>`<div class="step"><span class="stepno">${i+1}</span><div>${escHtml(s)}</div></div>`).join("")}
-</div>`);
+  openModal(modalShell(escHtml(r.name),
+`${recipePhotoHtml(r,"recipe-img")}
+<span class="tag">${escHtml(r.cat)} · от @${escHtml(owner)}</span>
+${recipeMeta(r)}
+<h2>Необходими продукти${unitsLinkHtml()}</h2>
+<div class="ingredient-list">${r.ings.map(x=>`<div><b>${escHtml(x[0])} ${escHtml(x[1])}</b> ${escHtml(x[2])}</div>`).join("")}</div>
+<h2>Начин на приготвяне</h2>${steps.map((s,i)=>`<div class="step"><span class="stepno">${i+1}</span><div>${escHtml(s)}</div></div>`).join("")||`<p class="muted">Няма описани стъпки.</p>`}`,
+`<button class="btn primary" onclick="addFriendRecipe('${escJs(r.id)}')">+ Добави към моите рецепти</button>`,
+"recipe-detail"));
 }
 function addFriendRecipe(id){
   const item=findPublic(id);
   if(!item)return;
   const r=item.r;
-  openModal(`<div class="modalbox"><button class="close" onclick="closeModal()">×</button>
-<h2>Добави „${escHtml(r.name)}“ към твоите рецепти</h2>
+  openModal(modalShell("Добави към твоите рецепти",
+`<p class="muted" style="margin-bottom:16px">„${escHtml(r.name)}“ ще стане твоя лична рецепта — можеш да я променяш свободно.</p>
 <div class="field"><label>Категория при теб</label><select id="fcat">${me().categories.map(c=>`<option>${escHtml(c)}</option>`).join("")}</select></div>
-<div class="field" style="margin-top:10px"><label>Или нова категория (по желание)</label><input id="fnewcat" placeholder="напр. От приятели"></div>
-<button class="primary" style="margin-top:16px" onclick="confirmAddFriendRecipe('${escJs(r.id)}',this)">Добави</button>
-</div>`);
+<div class="field" style="margin-top:14px"><label>Или нова категория (по желание)</label><input id="fnewcat" placeholder="напр. От приятели"></div>`,
+`<button class="btn ghost" onclick="closeModal()">Откажи</button>
+ <button class="btn primary" onclick="confirmAddFriendRecipe('${escJs(r.id)}',this)">Добави</button>`));
 }
 async function confirmAddFriendRecipe(id,btn){
   await guard(btn, async ()=>{
@@ -111,10 +212,15 @@ async function confirmAddFriendRecipe(id,btn){
 let friendResults=[];
 function renderFriends(app){
   friendResults=[];
-  app.innerHTML=`<section class="hero" style="padding-bottom:20px"><div class="eyebrow">Общност</div><h1>Приятели</h1><p>Търси потребители по потребителско име и разгледай публичните им рецепти.</p>
-<div class="search"><input id="friendSearch" placeholder="🔎 Потребителско име..." oninput="searchFriends()"><button class="primary">Търси</button></div></section>
-<div class="section-title"><h2>Резултати</h2></div><div id="friendResults"><p class="muted">Въведи потребителско име за търсене.</p></div>
-<div class="section-title"><h2>Твоите приятели</h2></div><div id="friendList">${friendListHtml()}</div>`;
+  app.innerHTML=`<section class="hero">
+<div class="eyebrow">Общност</div><h1>Приятели</h1>
+<p>Търси потребители по потребителско име и разгледай публичните им рецепти.</p>
+</section>
+<div class="search" style="margin-bottom:26px"><span class="si">\u{1F50E}</span><input id="friendSearch" placeholder="Потребителско име..." oninput="searchFriends()"></div>
+<div class="panel"><div class="panel-head"><h2>Резултати</h2></div>
+<div id="friendResults"><p class="muted">Въведи потребителско име за търсене.</p></div></div>
+<div class="panel" style="margin-top:22px"><div class="panel-head"><h2>Твоите приятели</h2></div>
+<div id="friendList">${friendListHtml()}</div></div>`;
 }
 function searchFriends(){
   const q=(document.getElementById("friendSearch")?.value||"").trim();
@@ -135,14 +241,14 @@ function friendResultsHtml(){
   if(!friendResults.length)return '<p class="muted">Няма намерени потребители.</p>';
   return friendResults.map(u=>{
     const isFriend=me().friends.some(f=>f.id===u.id);
-    return `<div class="friendrow"><span>@${escHtml(u.username)}</span>${isFriend
-      ?`<button class="ghost" onclick="viewFriend('${escJs(u.id)}','${escJs(u.username)}')">Виж рецептите</button>`
-      :`<button class="primary" onclick="addFriend('${escJs(u.id)}','${escJs(u.username)}',this)">+ Добави приятел</button>`}</div>`;
+    return `<div class="friendrow"><span class="friend-id"><span class="avatar">${escHtml(initials(u.username))}</span>@${escHtml(u.username)}</span>${isFriend
+      ?`<button class="btn ghost btn-sm" onclick="viewFriend('${escJs(u.id)}','${escJs(u.username)}')">Виж рецептите</button>`
+      :`<button class="btn primary btn-sm" onclick="addFriend('${escJs(u.id)}','${escJs(u.username)}',this)">+ Добави</button>`}</div>`;
   }).join("");
 }
 function friendListHtml(){
   if(!me().friends.length)return '<p class="muted">Все още нямаш добавени приятели.</p>';
-  return me().friends.map(f=>`<div class="friendrow"><span>@${escHtml(f.username)}</span><span><button class="ghost" onclick="viewFriend('${escJs(f.id)}','${escJs(f.username)}')">Виж рецептите</button> <button class="ghost" onclick="removeFriend('${escJs(f.id)}',this)" title="Премахни">×</button></span></div>`).join("");
+  return me().friends.map(f=>`<div class="friendrow"><span class="friend-id"><span class="avatar">${escHtml(initials(f.username))}</span>@${escHtml(f.username)}</span><span style="display:flex;gap:8px"><button class="btn ghost btn-sm" onclick="viewFriend('${escJs(f.id)}','${escJs(f.username)}')">Виж рецептите</button><button class="btn ghost btn-sm" onclick="removeFriend('${escJs(f.id)}',this)" title="Премахни приятел">×</button></span></div>`).join("");
 }
 function renderFriendResults(){const e=document.getElementById("friendResults");if(e)e.innerHTML=friendResultsHtml()}
 async function addFriend(id,username,btn){
@@ -162,22 +268,25 @@ async function removeFriend(id,btn){
   });
 }
 async function viewFriend(id,username){
-  openModal(`<div class="modalbox"><button class="close" onclick="closeModal()">×</button>
-<h2>Публични рецепти на @${escHtml(username)}</h2>
-<div id="friendRecipes">${loadingHtml()}</div></div>`);
+  openModal(modalShell(`Рецепти на @${escHtml(username)}`,`<div id="friendRecipes">${skeletonCards(2)}</div>`));
   try{
     const ids=await dbLoadFriendPublic(id);
     const box=document.getElementById("friendRecipes");
     if(!box)return;
-    box.className="grid";box.style.marginTop="14px";
-    box.innerHTML=ids.map(rid=>{const it=findPublic(rid);return it?publicCard(it.owner,it.r):""}).join("")
-      ||'<p class="muted">Няма публични рецепти все още.</p>';
-  }catch(e){console.error(e);const b=document.getElementById("friendRecipes");if(b)b.innerHTML='<p class="muted">Неуспешно зареждане.</p>'}
+    const cards=ids.map(rid=>{const it=findPublic(rid);return it?publicCard(it.owner,it.r):""}).join("");
+    box.innerHTML=cards
+      ?`<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">${cards}</div>`
+      :emptyState("\u{1F373}","Няма публични рецепти","Този потребител още не е споделил нищо.");
+  }catch(e){
+    console.error(e);
+    const b=document.getElementById("friendRecipes");
+    if(b)b.innerHTML=emptyState("\u26A0\uFE0F","Неуспешно зареждане","Провери връзката си и опитай пак.");
+  }
 }
 
 /* ---------- DASHBOARD / WEEK / SHOPPING / CATEGORIES ---------- */
 function categoryChipsManage(){
-  return me().categories.map(c=>`<span class="chip" draggable="true" data-c="${escHtml(c)}" ondragstart="catDragStart(event,this)" ondragover="catDragOver(event,this)" ondragend="catDragEnd(this)"><span class="grip" onpointerdown="catGripDown(event,this)" title="Влачи за пренареждане">⠿</span>${escHtml(c)} <button title="Преименувай" onclick="openRenameCategory(this.closest('.chip').dataset.c)" style="border:0;background:transparent;color:var(--muted);cursor:pointer">✎</button><button title="Изтрий" onclick="removeCategory(this.closest('.chip').dataset.c,this)" style="border:0;background:transparent;color:#8d493e;cursor:pointer">×</button></span>`).join("");
+  return me().categories.map(c=>`<span class="chip" draggable="true" data-c="${escHtml(c)}" ondragstart="catDragStart(event,this)" ondragover="catDragOver(event,this)" ondragend="catDragEnd(this)"><span class="grip" onpointerdown="catGripDown(event,this)" title="Влачи за пренареждане">⠿</span>${escHtml(c)}<button title="Преименувай" onclick="openRenameCategory(this.closest('.chip').dataset.c)">✎</button><button class="del" title="Изтрий" onclick="removeCategory(this.closest('.chip').dataset.c,this)">×</button></span>`).join("");
 }
 
 /* --- пренареждане на категориите ---
@@ -243,12 +352,11 @@ function catGripDown(ev,grip){
 
 /* --- преименуване --- */
 function openRenameCategory(name){
-  openModal(`<div class="modalbox"><button class="close" onclick="closeModal()">×</button>
-<h2>Преименувай категория</h2>
-<div class="field"><label>Ново име</label><input id="renameCatName" value="${escHtml(name)}"></div>
-<p class="muted" style="margin:10px 0 0">Рецептите в тази категория ще се преместят автоматично.</p>
-<button class="primary" style="margin-top:16px" onclick="confirmRenameCategory('${escJs(name)}',this)">Запази</button>
-</div>`);
+  openModal(modalShell("Преименувай категория",
+`<div class="field"><label>Ново име</label><input id="renameCatName" value="${escHtml(name)}"></div>
+<p class="hint" style="margin-top:10px">Рецептите в тази категория ще се преместят автоматично.</p>`,
+`<button class="btn ghost" onclick="closeModal()">Откажи</button>
+ <button class="btn primary" onclick="confirmRenameCategory('${escJs(name)}',this)">Запази</button>`));
   setTimeout(()=>document.getElementById("renameCatName")?.focus(),0);
 }
 async function confirmRenameCategory(oldName,btn){
@@ -325,8 +433,12 @@ async function toggleShop(key,el){
   try{ await dbSetShopping(key,next); }
   catch(e){ console.error(e); toast("Неуспешен запис"); if(el)el.classList.toggle("done",!next); }
 }
+function todayIndex(){return (new Date().getDay()+6)%7}   /* DAYS започва от понеделник */
+
 function renderDashboard(app){
   const wk=me().week;
+  const today=DAYS[todayIndex()];
+
   const weekHtml=DAYS.map(d=>{
     const entries=wk[d]||[];
     const groups=MEALS.map(m=>{
@@ -335,12 +447,16 @@ function renderDashboard(app){
       return `<div class="mealgroup">${m}</div>`+items.map(e=>{
         const r=me().recipes.find(x=>x.id===e.id);
         if(!r)return "";
-        return `<div class="dayitem" style="position:relative;padding-right:28px" onclick="openRecipe('${escJs(r.id)}')">${r.emoji} ${escHtml(r.name)}<button title="Махни" onclick="event.stopPropagation();removeFromDay('${escJs(d)}','${escJs(r.id)}','${escJs(m)}',this)" style="position:absolute;right:4px;top:4px;border:0;background:#eee9dd;border-radius:6px;width:21px;height:21px;padding:0">×</button></div>`;
+        return `<div class="dayitem" onclick="openRecipe('${escJs(r.id)}')" title="${escHtml(r.name)}">${r.emoji} ${escHtml(r.name)}<button title="Махни" aria-label="Махни" onclick="event.stopPropagation();removeFromDay('${escJs(d)}','${escJs(r.id)}','${escJs(m)}',this)">×</button></div>`;
       }).join("");
     }).join("");
-    return `<div class="day"><strong>${d}</strong>${groups}<button style="border:0;background:transparent;color:var(--green);font-size:12px;margin-top:8px" onclick="pickDay('${escJs(d)}')">+ добави</button></div>`;
+    return `<div class="day${d===today?" today":""}">
+<div class="day-name">${d}${d===today?`<span class="day-today-dot" title="днес"></span>`:""}</div>
+${groups}
+<button class="day-add" onclick="pickDay('${escJs(d)}')">+ добави</button></div>`;
   }).join("");
 
+  /* сумиране на продуктите от менюто */
   const all={};
   DAYS.forEach(d=>(wk[d]||[]).forEach(e=>{
     const r=me().recipes.find(x=>x.id===e.id);
@@ -351,24 +467,48 @@ function renderDashboard(app){
     return `<li class="${me().shopping[k]?"done":""}" data-k="${escHtml(k)}" onclick="toggleShop(this.dataset.k,this)"><span>${escHtml(x.p)}</span><b>${fmtQty(x.n)} ${escHtml(x.u)}</b></li>`;
   }).join("");
   const customList=me().customItems.map(customItemHtml).join("");
-  const emptyMsg=(!autoList&&!customList)
-    ?'<p class="muted">Добави рецепти към седмичното меню или продукт по-долу.</p>':"";
   const hasCustom=me().customItems.length>0;
+  const planned=Object.values(wk).flat().length;
 
-  app.innerHTML=`<section class="hero" style="padding-bottom:20px"><div class="eyebrow">Личен профил</div><h1>Моето меню за тази седмица</h1><p>Подреди рецептите по дни и хранения и виж автоматично какво трябва да купиш.</p></section>
-<div class="dashboard"><div class="panel"><div class="section-title" style="margin-top:0"><h2>Седмично меню</h2><button class="primary" onclick="openRecipeForm()">+ Рецепта</button></div><div class="week">${weekHtml}</div></div>
-<div class="panel shopping"><div class="section-title" style="margin-top:0"><h2>🛒 Пазаруване</h2></div><p class="muted">Еднаквите продукти с една и съща мерна единица се обединяват.</p>
-<ul>${autoList}${customList}</ul>${emptyMsg}
-<div><div class="mealgroup" style="margin-top:14px">Добави свой продукт</div>
-<div class="ingrow" style="margin-top:6px">
+  app.innerHTML=`<section class="hero">
+<div class="eyebrow">Личен профил</div>
+<h1>Моето меню за тази седмица</h1>
+<p>Подреди рецептите по дни и хранения и виж автоматично какво трябва да купиш.</p>
+</section>
+
+<div class="stats" style="margin-bottom:26px">
+<div class="stat"><span>Рецепти</span><b>${me().recipes.length}</b></div>
+<div class="stat"><span>В менюто</span><b>${planned}</b></div>
+<div class="stat"><span>Любими</span><b>${me().recipes.filter(r=>r.fav).length}</b></div>
+</div>
+
+<div class="panel">
+<div class="panel-head"><h2>Седмично меню</h2><button class="btn ghost btn-sm" onclick="pickDay()">+ Добави ястие</button></div>
+<div class="week">${weekHtml}</div>
+</div>
+
+<div class="dashboard" style="margin-top:22px">
+<div class="panel shopping">
+<div class="panel-head"><h2>🛒 Пазаруване</h2>${hasCustom?`<button class="btn ghost btn-sm" onclick="clearDoneCustomItems(this)" title="Маха отметнатите ръчно добавени продукти">Изчисти</button>`:""}</div>
+${(autoList||customList)
+  ?`<ul>${autoList}${customList}</ul>`
+  :`<p class="muted" style="padding:6px 0 14px">Добави рецепти към менюто или запиши продукт по-долу.</p>`}
+<div class="mealgroup" style="margin-top:18px">Добави свой продукт</div>
+<div class="ingrow" style="margin-top:8px">
 <input id="ciQty" placeholder="Кол." title="Може и дроб: 1/2, 1 1/4" onkeydown="if(event.key==='Enter'){event.preventDefault();addCustomItem()}">
 <select id="ciUnit">${["",...UNITS].map(u=>`<option value="${escHtml(u)}" ${u==="бр"?"selected":""}>${u||"—"}</option>`).join("")}</select>
 <input id="ciName" placeholder="напр. хляб" list="shopNames" onkeydown="if(event.key==='Enter'){event.preventDefault();addCustomItem()}">
-<button title="Добави" onclick="addCustomItem(this)">+</button>
+<button title="Добави" aria-label="Добави" onclick="addCustomItem(this)">+</button>
 </div>
-<datalist id="shopNames">${ingredientNames().map(n=>`<option value="${escHtml(n)}">`).join("")}</datalist></div>
-${hasCustom?`<div style="margin-top:15px"><button class="ghost" onclick="clearDoneCustomItems(this)">🧹 Изчисти отметнатите</button></div>`:""}</div></div>
-<div class="panel" style="margin-top:22px"><div class="section-title" style="margin-top:0"><h2>Категории</h2></div><div class="categories" id="catManage">${categoryChipsManage()}</div>
-<div style="display:flex;gap:8px;margin-top:12px"><input id="newCatName" placeholder="Нова категория" style="flex:1;border:1px solid var(--line);border-radius:10px;padding:10px"><button class="primary" onclick="addCategory(this)">Добави</button></div></div>
-<div class="panel" style="margin-top:22px"><div class="section-title" style="margin-top:0"><h2>Бърз преглед</h2></div><div class="profile-stats"><div class="stat"><span class="muted">Рецепти</span><b>${me().recipes.length}</b></div><div class="stat"><span class="muted">В менюто</span><b>${Object.values(wk).flat().length}</b></div><div class="stat"><span class="muted">Любими</span><b>${me().recipes.filter(r=>r.fav).length}</b></div></div></div>`;
+<datalist id="shopNames">${ingredientNames().map(n=>`<option value="${escHtml(n)}">`).join("")}</datalist>
+</div>
+
+<div class="panel">
+<div class="panel-head"><div><h2>Категории</h2><div class="sub">Влачи ⠿, за да ги подредиш както искаш</div></div></div>
+<div class="categories" id="catManage">${categoryChipsManage()}</div>
+<div style="display:flex;gap:9px;margin-top:16px;max-width:420px">
+<input id="newCatName" placeholder="Нова категория" style="flex:1;border:1px solid var(--line);border-radius:var(--r-sm);padding:11px 13px;background:var(--surface)" onkeydown="if(event.key==='Enter'){event.preventDefault();addCategory()}">
+<button class="btn primary" onclick="addCategory(this)">Добави</button></div>
+</div>
+</div>`;
 }
